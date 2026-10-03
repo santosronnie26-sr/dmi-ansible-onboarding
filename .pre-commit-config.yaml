@@ -1,0 +1,15 @@
+---
+repos:
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+
+  - repo: local
+    hooks:
+      - id: ansible-lint
+        name: ansible-lint (project venv)
+        entry: .venv/bin/ansible-lint
+        language: system
+        pass_filenames: false
+        always_run: true
