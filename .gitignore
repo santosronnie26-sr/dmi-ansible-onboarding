@@ -21,3 +21,11 @@ vault_password*
 # OS / editor noise
 .DS_Store
 Thumbs.db
+
+# Terraform - state holds IPs/IDs, never commit
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+crash.log
+*.tfplan
