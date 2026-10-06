@@ -1,0 +1,58 @@
+---
+- name: Install and configure Nginx
+  hosts: web
+  become: true
+  tasks:
+    - name: Update the APT package cache
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Install Nginx
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+
+    - name: Start and enable Nginx
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: true
+
+- name: Deploy the static website
+  hosts: web
+  become: true
+  tasks:
+    - name: Copy index.html to the web root
+      ansible.builtin.copy:
+        src: files/index.html
+        dest: /var/www/html/index.html
+        owner: www-data
+        group: www-data
+        mode: "0644"
+      notify: Reload nginx
+
+  handlers:
+    - name: Reload nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded
+
+- name: Verify both websites from the controller
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Send an HTTP GET request to each web server
+      ansible.builtin.uri:
+        url: "http://{{ hostvars[item].ansible_host }}"
+        status_code: 200
+      loop: "{{ groups['web'] }}"
+      register: website_checks
+
+    - name: Confirm each server returned HTTP 200
+      ansible.builtin.assert:
+        that:
+          - item.status == 200
+        success_msg: "{{ item.item }} returned HTTP {{ item.status }}"
+      loop: "{{ website_checks.results }}"
