@@ -1,0 +1,84 @@
+---
+# ---------- Get the code ----------
+- name: Clone the EpicBook repository
+  ansible.builtin.git:
+    repo: "{{ app_repo }}"
+    dest: "{{ app_dest }}"
+    version: main
+  become: true
+  become_user: "{{ app_user }}"
+
+- name: Install Node.js dependencies
+  community.general.npm:
+    path: "{{ app_dest }}"
+    production: true
+  become: true
+  become_user: "{{ app_user }}"
+
+# ---------- Database (import once, before the app first starts) ----------
+- name: Check whether the database already has tables
+  ansible.builtin.command: >
+    mysql -h {{ db_host }} -u {{ db_user }} -N -e "SHOW TABLES;" {{ db_name }}
+  environment:
+    MYSQL_PWD: "{{ db_password }}"
+  register: epicbook_db_tables
+  changed_when: false
+  no_log: true
+
+- name: Import schema and seed data (only into an empty database)
+  ansible.builtin.shell: >
+    mysql -h {{ db_host }} -u {{ db_user }} {{ db_name }} < {{ app_dest }}/db/{{ item }}
+  environment:
+    MYSQL_PWD: "{{ db_password }}"
+  loop:
+    - BuyTheBook_Schema.sql
+    - author_seed.sql
+    - books_seed.sql
+  when: epicbook_db_tables.stdout | length == 0
+  changed_when: true
+  no_log: true
+
+# ---------- Run the app with PM2 ----------
+- name: Install PM2 globally
+  community.general.npm:
+    name: pm2
+    global: true
+    state: present
+
+- name: Deploy the PM2 ecosystem file (holds the DB connection)
+  ansible.builtin.template:
+    src: ecosystem.config.js.j2
+    dest: "{{ app_dest }}/ecosystem.config.js"
+    owner: "{{ app_user }}"
+    group: "{{ app_user }}"
+    mode: "0600"
+  notify: Reload epicbook
+
+- name: Check whether EpicBook is already registered in PM2
+  ansible.builtin.command: pm2 describe {{ pm2_app_name }}
+  become: true
+  become_user: "{{ app_user }}"
+  register: epicbook_pm2_describe
+  changed_when: false
+  failed_when: false
+
+- name: Start EpicBook with PM2
+  ansible.builtin.command: pm2 start ecosystem.config.js
+  args:
+    chdir: "{{ app_dest }}"
+  become: true
+  become_user: "{{ app_user }}"
+  when: epicbook_pm2_describe.rc != 0
+  changed_when: true
+
+- name: Save the PM2 process list
+  ansible.builtin.command: pm2 save
+  become: true
+  become_user: "{{ app_user }}"
+  changed_when: false
+
+- name: Register PM2 to start on boot
+  ansible.builtin.command: >
+    pm2 startup systemd -u {{ app_user }} --hp /home/{{ app_user }}
+  args:
+    creates: /etc/systemd/system/pm2-{{ app_user }}.service

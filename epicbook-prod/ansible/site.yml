@@ -1,0 +1,10 @@
+---
+- name: Deploy EpicBook application
+  hosts: web
+  become: true
+  force_handlers: true
+
+  roles:
+    - common
+    - nginx
+    - epicbook

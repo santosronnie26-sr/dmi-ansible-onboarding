@@ -1,0 +1,6 @@
+---
+- name: Reload epicbook
+  ansible.builtin.command: pm2 startOrReload {{ app_dest }}/ecosystem.config.js --update-env
+  become: true
+  become_user: "{{ app_user }}"
+  changed_when: true
